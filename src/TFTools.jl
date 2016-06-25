@@ -37,22 +37,47 @@ TensorFlow components and tools
 """
 module TFTools
 
-export Softmux
+export TFDataset, TFDatasets, next_batch, num_examples, Softmux, out, to_tensor, 
+    getX, getY
 
 using TensorFlow
 import TensorFlow: DT_FLOAT32
-import TensorFlow.API: relu, softmax, mul
+import TensorFlow.API: relu, softmax, mul, cast
 using Iterators
 
-type TFDataset
-    x::Array
-    y::Array
+type TFDataset{Tx, Ty}
+    X::Array{Tx,2}
+    Y::Vector{Ty}
 end
 
 type TFDatasets
     train::TFDataset
     validation::TFDataset
     test::TFDataset
+end
+
+function TFDataset(DX, DY)
+    X = convert(Array, DX)
+    Y = convert(Array, DY)
+    TFDataset(X, Y)
+end
+
+getX(ds::TFDataset) = Tensor(ds.X)
+getY(ds::TFDataset) = Tensor(ds.Y)
+
+function num_examples(ds::TFDataset)
+    sizeX = size(ds.X)
+    sizeY = size(ds.Y)
+    @assert sizeX[1] == sizeY[1]
+    sizeY[1]
+end
+
+function next_batch(ds::TFDataset, batch_size::Int64)
+    start_index = 1 #blah
+    end_index = 100 #blah
+    x = ds.X[start_index:end_index, :]
+    y = ds.Y[start_index:end_index] #label is dense (not one-hot)
+    return (x, y)
 end
 
 """
@@ -64,19 +89,19 @@ type Softmux
     n_muxselect::Int64
     hidden_units::Vector{Int64}
     units::Vector{Int64}
-    nn_input::Placeholder
     weights::Vector{Variable}
     biases::Vector{Variable}
     layers::Vector{Any}
-    nn_pred::Tensor
+    muxin::Tensor
+    muxselect::Tensor
+    nnout::Tensor
     muxout::Tensor
 end
 
 function Softmux(n_muxinput::Int64, n_muxselect::Int64, 
-    hidden_units::Vector{Int64})
+    hidden_units::Vector{Int64}, muxin::Tensor, muxselect::Tensor)
 
     @assert !isempty(hidden_units) 
-    nn_input = Placeholder(DT_FLOAT32, [-1, n_muxselect])
 
     units = [n_muxselect; hidden_units; n_muxinput]
     n_layers = length(units) - 1
@@ -90,24 +115,28 @@ function Softmux(n_muxinput::Int64, n_muxselect::Int64,
     end
 
     layers = Array(Any, n_layers)
-    layers[1] = relu(nn_input * weights[1] + biases[1])
+    layers[1] = relu(muxselect * weights[1] + biases[1])
     for i = 2:n_layers-1
         layers[i] = relu(layers[i-1] * weights[i] + biases[i])
     end
     
     # last layer is softmax
     layers[end] = softmax(layers[end-1] * weights[end] + biases[end])
-    nn_pred = layers[end]
+    nnout = layers[end] #softmax select over inputs
     # mux output is the soft selected input
-    muxout = sum(mul(nn_input, nn_pred))
+    muxout = sum(mul(muxin, nnout)) #single output
 
     Softmux(n_muxinput, n_muxselect, hidden_units, units,
-        nn_input, weights, biases, layers, nn_pred, muxout)
+        weights, biases, layers, muxin, muxselect, nnout, muxout)
+end
+
+function out(mux::Softmux)
+    mux.muxout
 end
 
 function hardout(mux::Softmux, muxin::Placeholder, muxselect::Placeholder)
     #eval...
-    mux.nn_pred
+    mux.nnout
 end
 
 end # module

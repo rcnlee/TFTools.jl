@@ -1,4 +1,4 @@
-# *****************************************************************************
+#*****************************************************************************
 # Written by Ritchie Lee, ritchie.lee@sv.cmu.edu
 # *****************************************************************************
 # Copyright ã 2015, United States Government, as represented by the
@@ -37,11 +37,11 @@ using Datasets
 using Base.Test
 using TensorFlow
 import TensorFlow: DT_FLOAT32
-import TensorFlow.API: cast
+import TensorFlow.API: l2_loss, AdamOptimizer, cast, round_
 
 # Parameters
 const LEARNING_RATE = 0.001
-const TRAINING_EPOCHS = 15
+const TRAINING_EPOCHS = 50
 const BATCH_SIZE = 100
 const DISPLAY_STEP = 1
 
@@ -57,16 +57,14 @@ function test_softmux(datname::AbstractString="bin_small",
     n_feats = ncol(Dfeats)
     @assert nrow(Dfeats) == nrow(Dlabels)
 
-    tmpfeats = convert(AbstractTensor, convert(Array, Dfeats))
-    feats = cast(tmpfeats, DT_FLOAT32)
-    tmplabels = convert(AbstractTensor, convert(Array, Dlabels[symbol(labelfield)]))
-    labels = cast(tmplabels, DT_FLOAT32)
-
-    data_set = TFDataset(feats, labels)
+    data_set = TFDataset(Dfeats, Dlabels[symbol(labelfield)])
 
     # Construct model
-    mux = Softmux(n_feats, n_feats, HIDDEN_UNITS)
-    pred = mux.out()
+    muxselect = Placeholder(DT_FLOAT32, [-1, n_feats])
+    muxin = Placeholder(DT_FLOAT32, [-1, n_feats])
+    mux = Softmux(n_feats, n_feats, HIDDEN_UNITS, Tensor(muxin), Tensor(muxselect))
+    pred = out(mux) 
+    labels = Placeholder(DT_FLOAT32, [-1]) #or should this be [-1, 1]?
     
     # Define loss and optimizer
     cost = l2_loss(pred - labels) # Squared loss
@@ -88,26 +86,24 @@ function test_softmux(datname::AbstractString="bin_small",
             for i in 1:total_batch
                 batch_xs, batch_ys = next_batch(data_set, BATCH_SIZE)
                 # Fit training using batch data
-                run(sess, optimizer, FeedDict(x => batch_xs, y => batch_ys))
+                run(sess, optimizer, FeedDict(muxin => batch_xs, muxselect => batch_xs, labels => batch_ys))
                 # Compute average loss
-                batch_average_cost = run(sess, cost, FeedDict(x => batch_xs,
-                                                                y => batch_ys))
+                batch_average_cost = run(sess, cost, FeedDict(muxin => batch_xs, muxselect => batch_xs, labels => batch_ys))
                 avg_cost += batch_average_cost / (total_batch * BATCH_SIZE)
             end
         
             # Display logs per epoch step
-            if epoch % display_step == 0
+            if epoch % DISPLAY_STEP == 0
                 println("Epoch $(epoch)  cost=$(avg_cost)")
             end
         end
         println("Optimization Finished")
         
         # Test model
-        correct_prediction = (arg_max(pred, Tensor(1)) == arg_max(y, Tensor(1)))
+        correct_prediction = (round_(pred) == labels)
         # Calculate accuracy
         accuracy = mean(cast(correct_prediction, DT_FLOAT32))
-        acc = run(sess, accuracy, FeedDict(x => images(mnist.test),
-                                            y => labels(mnist.test)))
+        acc = run(sess, accuracy, FeedDict(muxin => data_set.X, muxselect => data_set.X, labels => data_set.Y))
         println("Accuracy:", acc)
     finally
         close(sess)
