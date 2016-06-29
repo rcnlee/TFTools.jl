@@ -41,16 +41,17 @@ import TensorFlow.API: l2_loss, AdamOptimizer, cast, round_
 
 # Parameters
 const LEARNING_RATE = 0.001
-const TRAINING_EPOCHS = 50
-const BATCH_SIZE = 100
+const TRAINING_EPOCHS = 200
+const BATCH_SIZE = 2000
 const DISPLAY_STEP = 1
 
 # Network parameters
 const HIDDEN_UNITS = [100, 100] 
 
-function test_softmux(datname::AbstractString="bin_small",
-    featfile::AbstractString="feats", labelfile::AbstractString="labels_mux";
-    labelfield::AbstractString="x1")
+function test_softmux(datname::AbstractString="bin_synth",
+    featfile::AbstractString="feats", labelfile::AbstractString="labels";
+    labelfield::AbstractString="x1",
+    b_debug::Bool=false)
 
     Dfeats = dataset(datname, featfile)
     Dlabels = dataset(datname, labelfile)
@@ -64,7 +65,7 @@ function test_softmux(datname::AbstractString="bin_small",
     muxin = Placeholder(DT_FLOAT32, [-1, n_feats])
     mux = Softmux(n_feats, n_feats, HIDDEN_UNITS, Tensor(muxin), Tensor(muxselect))
     pred = out(mux) 
-    labels = Placeholder(DT_FLOAT32, [-1]) #or should this be [-1, 1]?
+    labels = Placeholder(DT_FLOAT32, [-1]) 
     
     # Define loss and optimizer
     cost = l2_loss(pred - labels) # Squared loss
@@ -105,6 +106,18 @@ function test_softmux(datname::AbstractString="bin_small",
         accuracy = mean(cast(correct_prediction, DT_FLOAT32))
         acc = run(sess, accuracy, FeedDict(muxin => data_set.X, muxselect => data_set.X, labels => data_set.Y))
         println("Accuracy:", acc)
+        if b_debug
+            db_x = data_set.X 
+            db_nnout = run(sess, mux.nnout, FeedDict(muxin => data_set.X, muxselect => data_set.X, labels => data_set.Y))
+            db_ypred = run(sess, mux.muxout, FeedDict(muxin => data_set.X, muxselect => data_set.X, labels => data_set.Y)) 
+            db_labels = data_set.Y
+
+            NSHOW = 20
+            @show db_x[1:NSHOW]
+            @show db_nnout[1:NSHOW,:]
+            @show db_ypred[1:NSHOW]
+            @show db_labels[1:NSHOW]
+        end
     finally
         close(sess)
     end

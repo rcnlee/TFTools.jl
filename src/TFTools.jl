@@ -38,16 +38,22 @@ TensorFlow components and tools
 module TFTools
 
 export TFDataset, TFDatasets, next_batch, num_examples, Softmux, out, to_tensor, 
-    getX, getY
+    getX, getY, OpsBlock, num_ops
 
 using TensorFlow
 import TensorFlow: DT_FLOAT32
-import TensorFlow.API: relu, softmax, mul, cast
+import TensorFlow.API: relu, softmax, mul, cast, reduce_sum, pack, transpose_, 
+    arg_max
 using Iterators
+
+include(joinpath(dirname(@__FILE__), "TFSupplemental.jl"))
 
 type TFDataset{Tx, Ty}
     X::Array{Tx,2}
     Y::Vector{Ty}
+    num_examples::Int64
+    index_in_epoch::Int64
+    epochs_completed::Int64
 end
 
 type TFDatasets
@@ -59,22 +65,38 @@ end
 function TFDataset(DX, DY)
     X = convert(Array, DX)
     Y = convert(Array, DY)
-    TFDataset(X, Y)
+
+    sizeX = size(X)
+    sizeY = size(Y)
+    @assert sizeX[1] == sizeY[1]
+    num_examples = sizeY[1]
+
+    index_in_epoch = 1
+    epochs_completed = 0
+    TFDataset(X, Y, num_examples, index_in_epoch, epochs_completed)
 end
 
 getX(ds::TFDataset) = Tensor(ds.X)
 getY(ds::TFDataset) = Tensor(ds.Y)
-
-function num_examples(ds::TFDataset)
-    sizeX = size(ds.X)
-    sizeY = size(ds.Y)
-    @assert sizeX[1] == sizeY[1]
-    sizeY[1]
-end
+epochs_completed(ds::TFDataset) = ds.epochs_completed
+num_examples(ds::TFDataset) = ds.num_examples
+index_in_epoch(ds::TFDataset) = ds.index_in_epoch
 
 function next_batch(ds::TFDataset, batch_size::Int64)
-    start_index = 1 #blah
-    end_index = 100 #blah
+    start_index = ds.index_in_epoch
+    ds.index_in_epoch += batch_size
+    if ds.index_in_epoch > ds.num_examples
+        # Finished epoch
+        ds.epochs_completed += 1
+        # Shuffle the data
+        perm = randperm(ds.num_examples)
+        ds.X = ds.X[perm, :]
+        ds.Y = ds.Y[perm]
+        start_index = 1
+        ds.index_in_epoch = batch_size
+        @assert ds.index_in_epoch <= ds.num_examples
+    end
+    end_index = ds.index_in_epoch
     x = ds.X[start_index:end_index, :]
     y = ds.Y[start_index:end_index] #label is dense (not one-hot)
     return (x, y)
@@ -96,6 +118,8 @@ type Softmux
     muxselect::Tensor
     nnout::Tensor
     muxout::Tensor
+    hardselect::Tensor
+    hardout::Tensor
 end
 
 function Softmux(n_muxinput::Int64, n_muxselect::Int64, 
@@ -124,19 +148,46 @@ function Softmux(n_muxinput::Int64, n_muxselect::Int64,
     layers[end] = softmax(layers[end-1] * weights[end] + biases[end])
     nnout = layers[end] #softmax select over inputs
     # mux output is the soft selected input
-    muxout = sum(mul(muxin, nnout)) #single output
+    muxout = reduce_sum(mul(muxin, nnout), 1) #collapse to single column
+    hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
+    hardout = reduce_sum(mul(muxin, one_hot(hardselect, Tensor(n_muxinput))), 1)
 
     Softmux(n_muxinput, n_muxselect, hidden_units, units,
-        weights, biases, layers, muxin, muxselect, nnout, muxout)
+        weights, biases, layers, muxin, muxselect, nnout, muxout, hardselect, hardout)
 end
 
 function out(mux::Softmux)
     mux.muxout
 end
 
-function hardout(mux::Softmux, muxin::Placeholder, muxselect::Placeholder)
-    #eval...
-    mux.nnout
+function hardselect(mux::Softmux)
+    mux.hardselect
+end
+
+function hardout(mux::Softmux)
+    mux.hardout
+end
+
+type OpsBlock
+    inputs::Tuple{Vararg{Tensor}}
+    op_list::Vector{Function}
+    outs::Vector{Tensor}
+    output::Tensor
+end
+
+function OpsBlock(inputs::Tuple{Vararg{Tensor}}, op_list::Vector{Function})
+    outs = map(f -> f(inputs...), op_list) 
+    output = transpose_(pack(Tensor(outs)))
+
+    OpsBlock(inputs, op_list, outs, output) 
+end
+
+function num_ops(ops::OpsBlock)
+    length(ops.op_list)
+end
+
+function out(ops::OpsBlock)
+    ops.output
 end
 
 end # module
