@@ -37,19 +37,19 @@ TensorFlow components and tools
 """
 module TFTools
 
-export TFDataset, TFDatasets, next_batch, num_examples, Softmux, out, to_tensor, 
-    getX, getY, OpsBlock, num_ops
+export TFDataset, TFDatasets, next_batch, num_examples, Softmux, out, 
+    getX, getY, OpsBlock, num_ops, getindex1, get_shape
 
 using TensorFlow
 import TensorFlow: DT_FLOAT32
 import TensorFlow.API: relu, softmax, mul, cast, reduce_sum, pack, transpose_, 
-    arg_max
+    arg_max, expand_dims, tile
 using Iterators
 
 include(joinpath(dirname(@__FILE__), "TFSupplemental.jl"))
 
-type TFDataset{Tx, Ty}
-    X::Array{Tx,2}
+type TFDataset{Tx,Ty,N}
+    X::Array{Tx,N}
     Y::Vector{Ty}
     num_examples::Int64
     index_in_epoch::Int64
@@ -71,7 +71,7 @@ function TFDataset(DX, DY)
     @assert sizeX[1] == sizeY[1]
     num_examples = sizeY[1]
 
-    index_in_epoch = 1
+    index_in_epoch = 0
     epochs_completed = 0
     TFDataset(X, Y, num_examples, index_in_epoch, epochs_completed)
 end
@@ -83,23 +83,39 @@ num_examples(ds::TFDataset) = ds.num_examples
 index_in_epoch(ds::TFDataset) = ds.index_in_epoch
 
 function next_batch(ds::TFDataset, batch_size::Int64)
-    start_index = ds.index_in_epoch
+    start_index = ds.index_in_epoch + 1
     ds.index_in_epoch += batch_size
     if ds.index_in_epoch > ds.num_examples
         # Finished epoch
         ds.epochs_completed += 1
         # Shuffle the data
         perm = randperm(ds.num_examples)
-        ds.X = ds.X[perm, :]
+        ds.X = getindex1(ds.X, perm)
         ds.Y = ds.Y[perm]
         start_index = 1
         ds.index_in_epoch = batch_size
         @assert ds.index_in_epoch <= ds.num_examples
     end
     end_index = ds.index_in_epoch
-    x = ds.X[start_index:end_index, :]
+    x = getindex1(ds.X, start_index:end_index)
     y = ds.Y[start_index:end_index] #label is dense (not one-hot)
     return (x, y)
+end
+
+"""
+getindex where the index for the first dim is given, others are ':'
+this function exists to support varying dims in arrays
+"""
+function getindex1{T,N}(X::Array{T,N}, i1)
+    if N == 2
+        return X[i1, :]
+    elseif N == 3
+        return X[i1, :, :]
+    elseif N == 1
+        return X[i1]
+    else
+        error("Not implemented")
+    end
 end
 
 """
@@ -145,15 +161,40 @@ function Softmux(n_muxinput::Int64, n_muxselect::Int64,
     end
     
     # last layer is softmax
+    # softmax select over inputs
     layers[end] = softmax(layers[end-1] * weights[end] + biases[end])
-    nnout = layers[end] #softmax select over inputs
+    nnout = layers[end] 
+    
     # mux output is the soft selected input
-    muxout = reduce_sum(mul(muxin, nnout), 1) #collapse to single column
     hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
-    hardout = reduce_sum(mul(muxin, one_hot(hardselect, Tensor(n_muxinput))), 1)
+    hardselect_1h = one_hot(hardselect, Tensor(n_muxinput))
+    muxin_rank = length(get_shape(muxin))
+    if muxin_rank == 2
+        muxout = reduce_sum(mul(muxin, nnout), Tensor(1))
+        hardout = reduce_sum(mul(muxin, hardselect_1h), Tensor(1))
+    elseif muxin_rank == 3
+        muxout = reduce_sum(mul3(muxin, nnout), Tensor(2))
+        hardout = reduce_sum(mul3(muxin, hardselect_1h), Tensor(2))
+    else
+        error("Not supported! (rank=$(muxin_rank))")
+    end
 
     Softmux(n_muxinput, n_muxselect, hidden_units, units,
         weights, biases, layers, muxin, muxselect, nnout, muxout, hardselect, hardout)
+end
+
+function mul3(X::Tensor, y::Tensor)
+    n_time = get_shape(X)[2]
+    tmp = expand_dims(y, Tensor(1))
+    Y = tile(tmp, Tensor([1, n_time, 1]))
+    out = mul(X, Y) #element-wise mul
+    out
+end
+
+# Is this stable/robust?
+function get_shape(X::Tensor)
+    dims = (map(d -> d[:value], X.x[:get_shape]())...)
+    dims
 end
 
 function out(mux::Softmux)
