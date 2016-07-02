@@ -37,11 +37,11 @@ TensorFlow components and tools
 """
 module TFTools
 
-export TFDataset, TFDatasets, next_batch, num_examples, Softmux, out, 
-    getX, getY, OpsBlock, num_ops, getindex1, get_shape
+export TFDataset, TFDatasets, next_batch, num_examples, Softmux, out, hardout,
+    getX, getY, OpsBlock, num_ops, getindex1, get_shape, hardselect
 
 using TensorFlow
-import TensorFlow: DT_FLOAT32
+import TensorFlow: DT_FLOAT32 
 import TensorFlow.API: relu, softmax, mul, cast, reduce_sum, pack, transpose_, 
     arg_max, expand_dims, tile
 using Iterators
@@ -186,7 +186,7 @@ end
 function mul3(X::Tensor, y::Tensor)
     n_time = get_shape(X)[2]
     tmp = expand_dims(y, Tensor(1))
-    Y = tile(tmp, Tensor([1, n_time, 1]))
+    Y = tile(tmp, Tensor(Int32[1, n_time, 1]))
     out = mul(X, Y) #element-wise mul
     out
 end
@@ -209,6 +209,10 @@ function hardout(mux::Softmux)
     mux.hardout
 end
 
+function hardselect(mux::Softmux)
+    mux.hardselect
+end
+
 type OpsBlock
     inputs::Tuple{Vararg{Tensor}}
     op_list::Vector{Function}
@@ -217,7 +221,7 @@ type OpsBlock
 end
 
 function OpsBlock(inputs::Tuple{Vararg{Tensor}}, op_list::Vector{Function})
-    outs = map(f -> f(inputs...), op_list) 
+    outs = map(f -> transpose_(f(inputs...)), op_list) #FIXME: remove the double transpose, but this is due to pack packing to the wrong dimension
     output = transpose_(pack(Tensor(outs)))
 
     OpsBlock(inputs, op_list, outs, output) 
