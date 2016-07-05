@@ -37,9 +37,11 @@ TensorFlow components and tools
 """
 module TFTools
 
-export TFDataset, TFDatasets, next_batch, num_examples, Softmux, out, hardout,
-    getX, getY, OpsBlock, num_ops, getindex1, get_shape, hardselect
+export TFDataset, TFDatasets, next_batch, num_examples, 
+    ReluStack,
+    Softmux, out, hardout, getX, getY, OpsBlock, num_ops, getindex1, get_shape, hardselect
 
+import Base: ndims
 using TensorFlow
 import TensorFlow: DT_FLOAT32 
 import TensorFlow.API: relu, softmax, mul, cast, reduce_sum, pack, transpose_, 
@@ -119,57 +121,88 @@ function getindex1{T,N}(X::Array{T,N}, i1)
 end
 
 """
+Multiple relu layers
+"""
+type ReluStack
+   n_inputs::Int64
+   n_units::Vector{Int64}
+   weights::Vector{Variable}
+   biases::Vector{Variable}
+   layers::Vector{Tensor}
+   out::Tensor
+end
+
+function ReluStack(input::Tensor, n_units::Vector{Int64})
+    @assert !isempty(n_units) 
+    
+    n_layers = length(n_units)
+    weights = Array(Variable, n_layers)
+    biases = Array(Variable, n_layers)    
+    layers = Array(Tensor, n_layers)
+    
+    n_inputs = get_shape(input)[end]
+    n1 = n_units[1]
+    weights[1] = Variable(randn(Tensor, [n_inputs, n1]))
+    biases[1] = Variable(randn(Tensor, [n1]))
+    layers[1] = relu(input * weights[1] + biases[1])
+
+    for i = 2:n_layers
+        n0 = n_units[i-1]
+        n1 = n_units[i]
+        weights[i] = Variable(randn(Tensor, [n0, n1]))
+        biases[i] = Variable(randn(Tensor, [n1]))
+        layers[i] = relu(layers[i-1] * weights[i] + biases[i])
+    end
+    out = layers[end]
+
+    ReluStack(n_inputs, n_units, weights, biases, layers, out)
+end
+
+function out(relustack::ReluStack)
+    relustack.out
+end
+
+"""
 Soft multiplexer (selector) component that can be learned using gradient
 descent
 """
 type Softmux
     n_muxinput::Int64
-    n_muxselect::Int64
     hidden_units::Vector{Int64}
-    units::Vector{Int64}
-    weights::Vector{Variable}
-    biases::Vector{Variable}
-    layers::Vector{Any}
     muxin::Tensor
     muxselect::Tensor
+    nn::ReluStack
+    weight::Variable
+    bias::Variable
     nnout::Tensor
     muxout::Tensor
     hardselect::Tensor
     hardout::Tensor
 end
 
-function Softmux(n_muxinput::Int64, n_muxselect::Int64, 
-    hidden_units::Vector{Int64}, muxin::Tensor, muxselect::Tensor)
+function Softmux(n_muxinput::Int64, 
+    hidden_units::Vector{Int64}, 
+    muxin::Tensor, 
+    muxselect::Tensor)
 
     @assert !isempty(hidden_units) 
 
-    units = [n_muxselect; hidden_units; n_muxinput]
-    n_layers = length(units) - 1
-    weights = Array(Variable, n_layers)
-    biases = Array(Variable, n_layers)    
-    i = 1
-    for (n1, n2) in partition(units, 2, 1)
-        weights[i] = Variable(randn(Tensor, [n1, n2]))
-        biases[i] = Variable(randn(Tensor, [n2]))
-        i += 1
-    end
-
-    layers = Array(Any, n_layers)
-    layers[1] = relu(muxselect * weights[1] + biases[1])
-    for i = 2:n_layers-1
-        layers[i] = relu(layers[i-1] * weights[i] + biases[i])
-    end
+    relustack = ReluStack(muxselect, hidden_units)
+    reluout = out(relustack)
     
     # last layer is softmax
     # softmax select over inputs
-    layers[end] = softmax(layers[end-1] * weights[end] + biases[end])
-    nnout = layers[end] 
+    n0 = get_shape(reluout)[end]
+    n1 = n_muxinput 
+    weight = Variable(randn(Tensor, [n0, n1]))
+    bias = Variable(randn(Tensor, [n1]))
+    nnout = softmax(reluout * weight + bias)
     
     # mux output is the soft selected input
     hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
     hardselect_1h = one_hot(hardselect, Tensor(n_muxinput))
-    muxin_rank = length(get_shape(muxin))
-    if muxin_rank == 2
+    muxin_rank = ndims(muxin)
+    if muxin_rank == 2 #TODO: avoid switching if possible
         muxout = reduce_sum(mul(muxin, nnout), Tensor(1))
         hardout = reduce_sum(mul(muxin, hardselect_1h), Tensor(1))
     elseif muxin_rank == 3
@@ -179,8 +212,8 @@ function Softmux(n_muxinput::Int64, n_muxselect::Int64,
         error("Not supported! (rank=$(muxin_rank))")
     end
 
-    Softmux(n_muxinput, n_muxselect, hidden_units, units,
-        weights, biases, layers, muxin, muxselect, nnout, muxout, hardselect, hardout)
+    Softmux(n_muxinput, hidden_units, muxin, muxselect, relustack, weight, bias,
+        nnout, muxout, hardselect, hardout)
 end
 
 function mul3(X::Tensor, y::Tensor)
@@ -195,6 +228,13 @@ end
 function get_shape(X::Tensor)
     dims = (map(d -> d[:value], X.x[:get_shape]())...)
     dims
+end
+
+"""
+Gives the static rank.  rank_ gives dynamic rank (needs eval)
+"""
+function ndims(X::Tensor)
+    length(get_shape(X))
 end
 
 function out(mux::Softmux)
