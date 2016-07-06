@@ -1,4 +1,4 @@
-# *****************************************************************************
+#*****************************************************************************
 # Written by Ritchie Lee, ritchie.lee@sv.cmu.edu
 # *****************************************************************************
 # Copyright ã 2015, United States Government, as represented by the
@@ -32,82 +32,30 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # *****************************************************************************
 
-using TensorFlow
-import TensorFlow.API: mul, softmax, arg_max, cast, reduce_sum,
-    expand_dims, tile
-
 """
-Soft multiplexer (selector) component that can be learned using gradient
-descent
+Creates a combination component of OpsBlock followed by Softmux
 """
-type SoftMux
-    n_muxinput::Int64
-    hidden_units::Vector{Int64}
-    muxin::Tensor
-    muxselect::Tensor
-    nn::ReluStack
-    weight::Variable
-    bias::Variable
-    nnout::Tensor
-    muxout::Tensor
-    hardselect::Tensor
-    hardout::Tensor
+type SoftOpsMux
+    opsblock::OpsBlock
+    softmux::SoftMux
 end
 
-function SoftMux(n_muxinput::Int64, 
-    hidden_units::Vector{Int64}, 
-    muxin::Tensor, 
-    muxselect::Tensor)
+function SoftOpsMux(op_inputs::Tuple{Vararg{Tensor}}, ops_list::Vector{Function},
+    hidden_units::Vector{Int64}, muxselect::Tensor)
 
-    @assert !isempty(hidden_units) 
+    opsblock = OpsBlock(op_inputs, ops_list)
 
-    relustack = ReluStack(muxselect, hidden_units)
-    reluout = out(relustack)
-    
-    # last layer is softmax
-    # softmax select over inputs
-    n0 = get_shape(reluout)[end]
-    n1 = n_muxinput 
-    weight = Variable(randn(Tensor, [n0, n1]))
-    bias = Variable(randn(Tensor, [n1]))
-    nnout = softmax(reluout * weight + bias)
-    
-    # mux output is the soft selected input
-    hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
-    hardselect_1h = one_hot(hardselect, Tensor(n_muxinput))
-    muxin_rank = ndims(muxin)
-    if muxin_rank == 2 #TODO: avoid switching if possible
-        muxout = reduce_sum(mul(muxin, nnout), Tensor(1))
-        hardout = reduce_sum(mul(muxin, hardselect_1h), Tensor(1))
-    elseif muxin_rank == 3
-        muxout = reduce_sum(mul3(muxin, nnout), Tensor(2))
-        hardout = reduce_sum(mul3(muxin, hardselect_1h), Tensor(2))
-    else
-        error("Not supported! (rank=$(muxin_rank))")
-    end
+    n_muxinput = length(ops_list)
+    softmux = SoftMux(n_muxinput, hidden_units, out(opsblock), muxselect)
 
-    SoftMux(n_muxinput, hidden_units, muxin, muxselect, relustack, weight, bias,
-        nnout, muxout, hardselect, hardout)
+    SoftOpsMux(opsblock, softmux)
 end
 
-function mul3(X::Tensor, y::Tensor)
-    n_time = get_shape(X)[2]
-    tmp = expand_dims(y, Tensor(1))
-    Y = tile(tmp, Tensor(Int32[1, n_time, 1]))
-    out = mul(X, Y) #element-wise mul
-    out
-end
+#forward these to opsblock
+num_ops(opsmux::SoftOpsMux) = num_ops(opsmux.opsblock)
 
-function out(mux::SoftMux)
-    mux.muxout
-end
-
-function hardselect(mux::SoftMux)
-    mux.hardselect
-end
-
-function hardout(mux::SoftMux)
-    mux.hardout
-end
-
+#forward these softmux
+out(opsmux::SoftOpsMux) = out(opsmux.softmux)
+hardout(opsmux::SoftOpsMux) = hardout(opsmux.softmux)
+hardselect(opsmux::SoftOpsMux) = hardselect(opsmux.softmux)
 

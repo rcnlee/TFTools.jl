@@ -55,5 +55,7 @@ export SoftMux, out, hardselect, hardout
 include("OpsBlock.jl")
 export OpsBlock, out, num_ops
 
+include("SoftOpsMux.jl")
+export SoftOpsMux, num_ops, out, hardselect, hardout
 
 end # module
