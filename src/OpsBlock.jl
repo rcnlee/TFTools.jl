@@ -32,28 +32,28 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # *****************************************************************************
 
-"""
-TensorFlow components and tools
-"""
-module TFTools
+using TensorFlow
+import TensorFlow.API: transpose_, pack
 
-include("TFSupplemental.jl")
-export one_hot
+type OpsBlock
+    inputs::Tuple{Vararg{Tensor}}
+    op_list::Vector{Function}
+    outs::Vector{Tensor}
+    output::Tensor
+end
 
-include("TFCommon.jl")
-export get_shape, ndims
+function OpsBlock(inputs::Tuple{Vararg{Tensor}}, op_list::Vector{Function})
+    outs = map(f -> transpose_(f(inputs...)), op_list) #FIXME: remove the double transpose, but this is due to pack packing to the wrong dimension
+    output = transpose_(pack(Tensor(outs)))
 
-include("TFDataset.jl")
-export TFDataset, TFDatasets, next_batch, num_examples
+    OpsBlock(inputs, op_list, outs, output) 
+end
 
-include("ReluStack.jl")
-export ReluStack, out
+function num_ops(ops::OpsBlock)
+    length(ops.op_list)
+end
 
-include("SoftMux.jl")
-export SoftMux, out, hardselect, hardout
+function out(ops::OpsBlock)
+    ops.output
+end
 
-include("OpsBlock.jl")
-export OpsBlock, out, num_ops
-
-
-end # module

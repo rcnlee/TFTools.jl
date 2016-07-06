@@ -32,28 +32,21 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # *****************************************************************************
 
+using TensorFlow
+
+import Base: ndims
+
+# Is this stable/robust?
+function get_shape(X::Tensor)
+    dims = (map(d -> d[:value], X.x[:get_shape]())...)
+    dims
+end
+
 """
-TensorFlow components and tools
+Gives the static rank.  rank_ gives dynamic rank (which needs eval)
 """
-module TFTools
-
-include("TFSupplemental.jl")
-export one_hot
-
-include("TFCommon.jl")
-export get_shape, ndims
-
-include("TFDataset.jl")
-export TFDataset, TFDatasets, next_batch, num_examples
-
-include("ReluStack.jl")
-export ReluStack, out
-
-include("SoftMux.jl")
-export SoftMux, out, hardselect, hardout
-
-include("OpsBlock.jl")
-export OpsBlock, out, num_ops
+function ndims(X::Tensor)
+    length(get_shape(X))
+end
 
 
-end # module

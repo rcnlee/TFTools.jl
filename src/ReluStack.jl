@@ -32,28 +32,48 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # *****************************************************************************
 
+using TensorFlow
+import TensorFlow.API: relu
+
 """
-TensorFlow components and tools
+Multiple relu layers
 """
-module TFTools
+type ReluStack
+   n_inputs::Int64
+   n_units::Vector{Int64}
+   weights::Vector{Variable}
+   biases::Vector{Variable}
+   layers::Vector{Tensor}
+   out::Tensor
+end
 
-include("TFSupplemental.jl")
-export one_hot
+function ReluStack(input::Tensor, n_units::Vector{Int64})
+    @assert !isempty(n_units) 
+    
+    n_layers = length(n_units)
+    weights = Array(Variable, n_layers)
+    biases = Array(Variable, n_layers)    
+    layers = Array(Tensor, n_layers)
+    
+    n_inputs = get_shape(input)[end]
+    n1 = n_units[1]
+    weights[1] = Variable(randn(Tensor, [n_inputs, n1]))
+    biases[1] = Variable(randn(Tensor, [n1]))
+    layers[1] = relu(input * weights[1] + biases[1])
 
-include("TFCommon.jl")
-export get_shape, ndims
+    for i = 2:n_layers
+        n0 = n_units[i-1]
+        n1 = n_units[i]
+        weights[i] = Variable(randn(Tensor, [n0, n1]))
+        biases[i] = Variable(randn(Tensor, [n1]))
+        layers[i] = relu(layers[i-1] * weights[i] + biases[i])
+    end
+    out = layers[end]
 
-include("TFDataset.jl")
-export TFDataset, TFDatasets, next_batch, num_examples
+    ReluStack(n_inputs, n_units, weights, biases, layers, out)
+end
 
-include("ReluStack.jl")
-export ReluStack, out
+function out(relustack::ReluStack)
+    relustack.out
+end
 
-include("SoftMux.jl")
-export SoftMux, out, hardselect, hardout
-
-include("OpsBlock.jl")
-export OpsBlock, out, num_ops
-
-
-end # module
