@@ -54,7 +54,8 @@ type SoftMux
     hardout::Tensor
 end
 
-function SoftMux(n_muxinput::Int64, 
+using Debug
+@debug function SoftMux(n_muxinput::Int64, 
     hidden_units::Vector{Int64}, 
     muxin::Tensor, 
     muxselect::Tensor)
@@ -76,7 +77,7 @@ function SoftMux(n_muxinput::Int64,
     hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
     hardselect_1h = one_hot(hardselect, Tensor(n_muxinput))
     muxin_rank = ndims(muxin)
-    if muxin_rank == 2 #TODO: avoid switching if possible
+    if muxin_rank == 1 || muxin_rank == 2 #TODO: avoid switching if possible
         muxout = reduce_sum(mul(muxin, nnout), Tensor(1))
         hardout = reduce_sum(mul(muxin, hardselect_1h), Tensor(1))
     elseif muxin_rank == 3

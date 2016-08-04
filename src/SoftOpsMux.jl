@@ -43,8 +43,10 @@ end
 function SoftOpsMux(op_inputs::Tuple{Vararg{Tensor}}, ops_list::Vector{Function},
     hidden_units::Vector{Int64}, muxselect::Tensor)
 
+    #ops
     opsblock = OpsBlock(op_inputs, ops_list)
 
+    #mux
     n_muxinput = length(ops_list)
     softmux = SoftMux(n_muxinput, hidden_units, out(opsblock), muxselect)
 

@@ -58,4 +58,7 @@ export OpsBlock, out, num_ops
 include("SoftOpsMux.jl")
 export SoftOpsMux, num_ops, out, hardselect, hardout
 
+include("TFFormatter.jl")
+export TFFormatter, gettensor, simpleout 
+
 end # module
