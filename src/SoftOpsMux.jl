@@ -35,7 +35,7 @@
 """
 Creates a combination component of OpsBlock followed by Softmux
 """
-type SoftOpsMux
+type SoftOpsMux <: AbstractMux
     opsblock::OpsBlock
     softmux::SoftMux
 end
@@ -56,8 +56,10 @@ end
 #forward these to opsblock
 num_ops(opsmux::SoftOpsMux) = num_ops(opsmux.opsblock)
 
-#forward these softmux
+#AbstractMux interface --- forward these to softmux
 out(opsmux::SoftOpsMux) = out(opsmux.softmux)
+softout(opsmux::SoftOpsMux) = softout(opsmux.softmux)
+softselect(opsmux::SoftOpsMux) = softselect(opsmux.softmux)
 hardout(opsmux::SoftOpsMux) = hardout(opsmux.softmux)
 hardselect(opsmux::SoftOpsMux) = hardselect(opsmux.softmux)
 

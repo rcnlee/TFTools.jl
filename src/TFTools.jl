@@ -41,7 +41,7 @@ include("TFSupplemental.jl")
 export one_hot
 
 include("TFCommon.jl")
-export get_shape, ndims
+export AbstractMux, get_shape, ndims
 
 include("TFDataset.jl")
 export TFDataset, TFDatasets, next_batch, num_examples
@@ -50,15 +50,19 @@ include("ReluStack.jl")
 export ReluStack, out
 
 include("SoftMux.jl")
-export SoftMux, out, hardselect, hardout
+export SoftMux, out, softselect, softout, hardselect, hardout
 
 include("OpsBlock.jl")
 export OpsBlock, out, num_ops
 
 include("SoftOpsMux.jl")
-export SoftOpsMux, num_ops, out, hardselect, hardout
+export SoftOpsMux, num_ops, out, softselect, softout, hardselect, hardout
 
-include("TFFormatter.jl")
-export TFFormatter, gettensor, simpleout 
+include("Circuit.jl")
+export Circuit, hardselect_tensor, softselect_tensor, simplestring, topstrings,
+    exec_blks, gradient_tensor, softselect_by_example
+
+include("Normalizer.jl")
+export Normalizer, normalize01, normalize
 
 end # module

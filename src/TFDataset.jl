@@ -32,6 +32,8 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # *****************************************************************************
 
+using RLESUtils, DataFrameSets
+
 type TFDataset{Tx,Ty,N}
     X::Array{Tx,N}
     Y::Vector{Ty}
@@ -46,6 +48,7 @@ type TFDatasets
     test::TFDataset
 end
 
+TFDataset(Dl::DFSetLabeled) = TFDataset(Dl.data, Dl.labels)
 function TFDataset(DX, DY)
     X = convert(Array, DX)
     Y = convert(Array, DY)

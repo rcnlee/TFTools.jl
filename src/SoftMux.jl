@@ -40,7 +40,7 @@ import TensorFlow.API: mul, softmax, arg_max, cast, reduce_sum,
 Soft multiplexer (selector) component that can be learned using gradient
 descent
 """
-type SoftMux
+type SoftMux <: AbstractMux
     n_muxinput::Int64
     hidden_units::Vector{Int64}
     muxin::Tensor
@@ -54,8 +54,7 @@ type SoftMux
     hardout::Tensor
 end
 
-using Debug
-@debug function SoftMux(n_muxinput::Int64, 
+function SoftMux(n_muxinput::Int64, 
     hidden_units::Vector{Int64}, 
     muxin::Tensor, 
     muxselect::Tensor)
@@ -99,7 +98,13 @@ function mul3(X::Tensor, y::Tensor)
     out
 end
 
-function out(mux::SoftMux)
+out(mux::SoftMux) = softout(mux)
+
+function softselect(mux::SoftMux)
+    mux.nnout
+end
+
+function softout(mux::SoftMux)
     mux.muxout
 end
 

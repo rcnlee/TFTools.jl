@@ -1,4 +1,4 @@
-# *****************************************************************************
+#*****************************************************************************
 # Written by Ritchie Lee, ritchie.lee@sv.cmu.edu
 # *****************************************************************************
 # Copyright ã 2015, United States Government, as represented by the
@@ -33,23 +33,83 @@
 # *****************************************************************************
 
 using TensorFlow
+using TensorFlow.API: gradients
 
-import Base: ndims
+type Circuit
+    blks::Vector{AbstractMux}
+    opnames::Vector{Vector{ASCIIString}}
+end
 
-abstract AbstractMux
+function hardselect_tensor(ckt::Circuit)
+    hardselects = [hardselect(blk) for blk in ckt.blks] 
+    hardtensor = transpose_(pack(Tensor(hardselects)))
+    hardtensor
+end
 
-# Is this stable/robust?
-function get_shape(X::Tensor)
-    dims = (map(d -> d[:value], X.x[:get_shape]())...)
-    dims = map(x -> x==nothing ? -1 : x, dims) #use -1 as the wildcard
-    dims
+function softselect_tensor(ckt::Circuit)
+    softsels = [softselect(blk) for blk in ckt.blks]
+    softtensor = Tensor(softsels)
+    softtensor
 end
 
 """
-Gives the static rank.  rank_ gives dynamic rank (which needs eval)
+Output a simple string concatenated by delimiter
 """
-function ndims(X::Tensor)
-    length(get_shape(X))
+function simplestring(sess::Session, ckt::Circuit, fd::FeedDict=FeedDict(); 
+    order::Vector{Int64}=Int64[], delim::ASCIIString="_")
+    
+    hs = run(sess, hardselect_tensor(ckt), fd)
+    n_examples, n_selectors = size(hs)
+
+    if isempty(order) 
+        order = collect(1:n_selectors)
+    end
+
+    stringout = ASCIIString[]
+    for i = 1:n_examples
+        A = [ckt.opnames[j][hs[i,j]+1] for j in order] #x+1 for python encoding
+        s = join(A, delim)
+        push!(stringout, s)
+    end
+    stringout
 end
 
+function topstrings{S<:AbstractString}(stringout::Vector{S}, n_top::Int64)
+    cmap = countmap(stringout)
+    cmap1 = collect(cmap)
+    tmp = sort(collect(cmap1), by=kv->kv[2], rev=true)
+    n_top = min(n_top, length(tmp)) #don't exceed length
+    topentries = tmp[1:n_top] #take top n
+    topentries = map(x->(x...), topentries)
+    topentries
+end
+
+"""
+Executes each blk individually in a loop.  Good for pin pointing exceptions when debugging.
+"""
+function exec_blks(sess::Session, ckt::Circuit, fd::FeedDict=FeedDict();
+    verbose::Bool=true)
+    results = Any[]
+    for i = 1:endof(ckt.blks)
+        verbose && println("blk=$(ckt.blks[i])")
+        result = run(sess, out(ckt.blks[i]), fd) 
+        push!(results, result)
+    end
+    results
+end
+
+function gradient_tensor(target::Tensor, vars::Variable...)
+    Tensor(gradients(target, Tensor([vars...]))[1])
+end
+
+function softselect_by_example(sess::Session, ckt::Circuit, fd::FeedDict=FeedDict())
+    softsel = run(sess, softselect_tensor(ckt), fd)
+    byexample = Any[]
+    n_examples = size(softsel[1], 1) #rows of the first blk
+    for i = 1:n_examples
+        A = [softsel[j][i,:] for j=1:length(ckt.blks)]
+        push!(byexample, A)
+    end
+    byexample
+end
 
