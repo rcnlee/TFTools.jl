@@ -60,7 +60,7 @@ export SoftOpsMux, num_ops, out, softselect, softout, hardselect, hardout
 
 include("Circuit.jl")
 export Circuit, hardselect_tensor, softselect_tensor, simplestring, topstrings,
-    exec_blks, gradient_tensor, softselect_by_example
+    exec_blks, gradient_tensor, softselect_by_example 
 
 include("Normalizer.jl")
 export Normalizer, normalize01, normalize

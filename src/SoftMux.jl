@@ -45,6 +45,7 @@ type SoftMux <: AbstractMux
     hidden_units::Vector{Int64}
     muxin::Tensor
     muxselect::Tensor
+    softness::Tensor
     nn::ReluStack
     weight::Variable
     bias::Variable
@@ -57,7 +58,8 @@ end
 function SoftMux(n_muxinput::Int64, 
     hidden_units::Vector{Int64}, 
     muxin::Tensor, 
-    muxselect::Tensor)
+    muxselect::Tensor,
+    softness::Tensor=constant(1.0))
 
     @assert !isempty(hidden_units) 
 
@@ -70,7 +72,7 @@ function SoftMux(n_muxinput::Int64,
     n1 = n_muxinput 
     weight = Variable(randn(Tensor, [n0, n1]))
     bias = Variable(randn(Tensor, [n1]))
-    nnout = softmax(reluout * weight + bias)
+    nnout = softmax(mul(softness, reluout * weight + bias))
     
     # mux output is the soft selected input
     hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
@@ -86,7 +88,7 @@ function SoftMux(n_muxinput::Int64,
         error("Not supported! (rank=$(muxin_rank))")
     end
 
-    SoftMux(n_muxinput, hidden_units, muxin, muxselect, relustack, weight, bias,
+    SoftMux(n_muxinput, hidden_units, muxin, muxselect, softness, relustack, weight, bias,
         nnout, muxout, hardselect, hardout)
 end
 
