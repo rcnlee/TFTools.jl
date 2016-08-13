@@ -48,14 +48,18 @@ type ReluStack
 end
 
 function ReluStack(input::Tensor, n_units::Vector{Int64})
-    @assert !isempty(n_units) 
+    n_inputs = get_shape(input)[end]
+
+    #if no units then just return input
+    if isempty(n_units)
+        return ReluStack(n_inputs, Int64[], Variable[], Variable[], Tensor[], input)
+    end
     
     n_layers = length(n_units)
     weights = Array(Variable, n_layers)
     biases = Array(Variable, n_layers)    
     layers = Array(Tensor, n_layers)
     
-    n_inputs = get_shape(input)[end]
     n1 = n_units[1]
     weights[1] = Variable(randn(Tensor, [n_inputs, n1]))
     biases[1] = Variable(randn(Tensor, [n1]))

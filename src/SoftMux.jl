@@ -34,7 +34,7 @@
 
 using TensorFlow
 import TensorFlow.API: mul, softmax, arg_max, cast, reduce_sum,
-    expand_dims, tile
+    expand_dims, tile, l2_normalize
 
 """
 Soft multiplexer (selector) component that can be learned using gradient
@@ -61,8 +61,6 @@ function SoftMux(n_muxinput::Int64,
     muxselect::Tensor,
     softness::Tensor=constant(1.0))
 
-    @assert !isempty(hidden_units) 
-
     relustack = ReluStack(muxselect, hidden_units)
     reluout = out(relustack)
     
@@ -72,7 +70,8 @@ function SoftMux(n_muxinput::Int64,
     n1 = n_muxinput 
     weight = Variable(randn(Tensor, [n0, n1]))
     bias = Variable(randn(Tensor, [n1]))
-    nnout = softmax(mul(softness, reluout * weight + bias))
+    #nnout = softmax(mul(softness, reluout * l2_normalize(weight, Tensor(1)) + l2_normalize(bias, Tensor(0))))
+    nnout = softmax(mul(softness, reluout * l2_normalize(weight, Tensor(1))))
     
     # mux output is the soft selected input
     hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
