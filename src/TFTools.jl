@@ -41,7 +41,7 @@ include("TFSupplemental.jl")
 export one_hot
 
 include("TFCommon.jl")
-export AbstractMux, get_shape, ndims
+export AbstractMux, get_shape, ndims, getindex
 
 include("TFDataset.jl")
 export TFDataset, TFDatasets, next_batch, num_examples

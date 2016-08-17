@@ -34,7 +34,7 @@
 
 using TensorFlow
 import TensorFlow.API: mul, softmax, arg_max, cast, reduce_sum,
-    expand_dims, tile, l2_normalize
+    expand_dims, tile, l2_normalize, cond
 
 """
 Soft multiplexer (selector) component that can be learned using gradient
@@ -50,15 +50,20 @@ type SoftMux <: AbstractMux
     weight::Variable
     bias::Variable
     nnout::Tensor
-    muxout::Tensor
+    softout::Tensor
+    harden::Tensor
     hardselect::Tensor
     hardout::Tensor
 end
 
+"""
+harden::Boo that switches mux output to hard
+"""
 function SoftMux(n_muxinput::Int64, 
     hidden_units::Vector{Int64}, 
     muxin::Tensor, 
     muxselect::Tensor,
+    harden::Tensor,
     softness::Tensor=constant(1.0))
 
     relustack = ReluStack(muxselect, hidden_units)
@@ -78,17 +83,17 @@ function SoftMux(n_muxinput::Int64,
     hardselect_1h = one_hot(hardselect, Tensor(n_muxinput))
     muxin_rank = ndims(muxin)
     if muxin_rank == 1 || muxin_rank == 2 #TODO: avoid switching if possible
-        muxout = reduce_sum(mul(muxin, nnout), Tensor(1))
+        softout = reduce_sum(mul(muxin, nnout), Tensor(1))
         hardout = reduce_sum(mul(muxin, hardselect_1h), Tensor(1))
     elseif muxin_rank == 3
-        muxout = reduce_sum(mul3(muxin, nnout), Tensor(2))
+        softout = reduce_sum(mul3(muxin, nnout), Tensor(2))
         hardout = reduce_sum(mul3(muxin, hardselect_1h), Tensor(2))
     else
         error("Not supported! (rank=$(muxin_rank))")
     end
 
-    SoftMux(n_muxinput, hidden_units, muxin, muxselect, softness, relustack, weight, bias,
-        nnout, muxout, hardselect, hardout)
+    SoftMux(n_muxinput, hidden_units, muxin, muxselect, softness, relustack, weight, 
+        bias, nnout, softout, harden, hardselect, hardout)
 end
 
 function mul3(X::Tensor, y::Tensor)
@@ -99,14 +104,16 @@ function mul3(X::Tensor, y::Tensor)
     out
 end
 
-out(mux::SoftMux) = softout(mux)
+function out(mux::SoftMux) 
+    cond_(mux.harden[1], ()->hardout(mux), ()->softout(mux))
+end
 
 function softselect(mux::SoftMux)
     mux.nnout
 end
 
 function softout(mux::SoftMux)
-    mux.muxout
+    mux.softout
 end
 
 function hardselect(mux::SoftMux)

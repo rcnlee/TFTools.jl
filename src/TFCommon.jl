@@ -34,7 +34,7 @@
 
 using TensorFlow
 
-import Base: ndims
+import Base: ndims, getindex
 
 abstract AbstractMux
 
@@ -52,4 +52,6 @@ function ndims(X::Tensor)
     length(get_shape(X))
 end
 
-
+function getindex(X::Tensor, inds)
+    Tensor(gather(X, Tensor(inds - 1))) #-1 for python 0-indexing
+end

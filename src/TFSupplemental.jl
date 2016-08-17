@@ -42,3 +42,12 @@ using TensorFlow.CoreTypes
 one_hot(indices::Union{AbstractTensor,Void}, depth::Union{AbstractTensor,Void}, on_value::Union{AbstractTensor,Void}=nothing, off_value::Union{AbstractTensor,Void}=nothing, axis::Union{AbstractTensor,Void}=nothing, dtype::Dtype=DT_FLOAT32, name::Union{AbstractString,Void}=nothing) = Tensor(tf.one_hot(;Dict(:indices=>indices, :depth=>depth, :on_value=>on_value, :off_value=>off_value, :axis=>axis, :dtype=>dtype, :name=>name)...))
 
 export one_hot
+
+function cond_(pred::Union{AbstractTensor,Void}, fn1::Function,
+    fn2::Function, name::Union{AbstractString,Void}=nothing) 
+    
+    fun = pyeval("""lambda f: lambda: f()""")
+    Tensor(tf.cond(;Dict(:pred=>pred, :fn1=>fun(fn1), :fn2=>fun(fn2), :name=>name)...))
+end
+
+export cond_

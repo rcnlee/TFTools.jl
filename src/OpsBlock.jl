@@ -37,20 +37,21 @@ import TensorFlow.API: transpose_, pack
 
 type OpsBlock
     inputs::Tuple{Vararg{Tensor}}
-    op_list::Vector{Function}
+    oplist::Vector{Function}
+    opargs::Vector{Any}
     outs::Vector{Tensor}
     output::Tensor
 end
 
-function OpsBlock(inputs::Tuple{Vararg{Tensor}}, op_list::Vector{Function})
-    outs = map(f -> transpose_(f(inputs...)), op_list) #FIXME: remove the double transpose, but this is due to pack packing to the wrong dimension
+function OpsBlock(inputs::Tuple{Vararg{Tensor}}, oplist::Vector{Function}; opargs::Vector{Any}=Any[])
+    outs = map(f -> transpose_(f(inputs..., opargs ...)), oplist) #FIXME: remove the double transpose, but this is due to pack packing to the wrong dimension
     output = transpose_(pack(Tensor(outs)))
 
-    OpsBlock(inputs, op_list, outs, output) 
+    OpsBlock(inputs, oplist,  opargs, outs, output) 
 end
 
 function num_ops(ops::OpsBlock)
-    length(ops.op_list)
+    length(ops.oplist)
 end
 
 function out(ops::OpsBlock)
