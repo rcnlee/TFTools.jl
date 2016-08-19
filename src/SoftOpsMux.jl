@@ -41,14 +41,14 @@ type SoftOpsMux <: AbstractMux
 end
 
 function SoftOpsMux(op_inputs::Tuple{Vararg{Tensor}}, ops_list::Vector{Function},
-    hidden_units::Vector{Int64}, muxselect::Tensor, harden::Tensor, softness::Tensor=constant(1.0); opargs::Vector{Any}=Any[])
+    hidden_units::Vector{Int64}, muxselect::Tensor, harden::Tensor, softness::Tensor=constant(1.0); opargs::Vector{Any}=Any[], override::Int64=0)
 
     #ops
     opsblock = OpsBlock(op_inputs, ops_list; opargs=opargs)
 
     #mux
     n_muxinput = length(ops_list)
-    softmux = SoftMux(n_muxinput, hidden_units, out(opsblock), muxselect, harden, softness)
+    softmux = SoftMux(n_muxinput, hidden_units, out(opsblock), muxselect, harden, softness; override=override)
 
     SoftOpsMux(opsblock, softmux)
 end
@@ -62,4 +62,4 @@ softout(opsmux::SoftOpsMux) = softout(opsmux.softmux)
 softselect(opsmux::SoftOpsMux) = softselect(opsmux.softmux)
 hardout(opsmux::SoftOpsMux) = hardout(opsmux.softmux)
 hardselect(opsmux::SoftOpsMux) = hardselect(opsmux.softmux)
-
+get_variables(opsmux::SoftOpsMux) = get_variables(opsmux.softmux)

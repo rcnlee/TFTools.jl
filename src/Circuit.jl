@@ -52,14 +52,17 @@ function softselect_tensor(ckt::Circuit)
     softtensor
 end
 
-"""
-Output a simple string concatenated by delimiter
-"""
-function simplestring(sess::Session, ckt::Circuit, fd::FeedDict=FeedDict(); 
+#"""
+#Output a simple string concatenated by delimiter
+#"""
+using Debug
+@debug function simplestring(sess::Session, ckt::Circuit, fd::FeedDict=FeedDict(); 
     order::Vector{Int64}=Int64[], delim::ASCIIString="_")
     
     hs = run(sess, hardselect_tensor(ckt), fd)
     n_examples, n_selectors = size(hs)
+
+    #@bp 
 
     if isempty(order) 
         order = collect(1:n_selectors)

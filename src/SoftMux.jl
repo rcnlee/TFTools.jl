@@ -34,7 +34,7 @@
 
 using TensorFlow
 import TensorFlow.API: mul, softmax, arg_max, cast, reduce_sum,
-    expand_dims, tile, l2_normalize, cond
+    expand_dims, tile, l2_normalize, cond, truncated_normal, zeros_like
 
 """
 Soft multiplexer (selector) component that can be learned using gradient
@@ -48,23 +48,25 @@ type SoftMux <: AbstractMux
     softness::Tensor
     nn::ReluStack
     weight::Variable
-    bias::Variable
     nnout::Tensor
     softout::Tensor
     harden::Tensor
     hardselect::Tensor
     hardout::Tensor
+    override::Int64
 end
 
-"""
-harden::Boo that switches mux output to hard
-"""
-function SoftMux(n_muxinput::Int64, 
+using Debug
+#"""
+#harden::Bool that switches mux output to hard
+#"""
+@debug function SoftMux(n_muxinput::Int64, 
     hidden_units::Vector{Int64}, 
     muxin::Tensor, 
     muxselect::Tensor,
     harden::Tensor,
-    softness::Tensor=constant(1.0))
+    softness::Tensor=constant(1.0); 
+    override::Int64=0)
 
     relustack = ReluStack(muxselect, hidden_units)
     reluout = out(relustack)
@@ -73,33 +75,35 @@ function SoftMux(n_muxinput::Int64,
     # softmax select over inputs
     n0 = get_shape(reluout)[end]
     n1 = n_muxinput 
-    weight = Variable(randn(Tensor, [n0, n1]))
-    bias = Variable(randn(Tensor, [n1]))
-    #nnout = softmax(mul(softness, reluout * l2_normalize(weight, Tensor(1)) + l2_normalize(bias, Tensor(0))))
-    nnout = softmax(mul(softness, reluout * l2_normalize(weight, Tensor(1))))
+    weight = Variable(truncated_normal(constant([n0, n1]), constant(0.0), constant(5e-2)))
+    nnout = softmax(mul(softness, reluout * l2_normalize(weight, constant(1))))
     
     # mux output is the soft selected input
-    hardselect = arg_max(nnout, Tensor(1)) #hardened dense selected channel, 0-indexed
-    hardselect_1h = one_hot(hardselect, Tensor(n_muxinput))
+    if override > 0
+        hardselect = tile(constant([override-1]), Tensor([size(nnout)[1]])) 
+    else
+        hardselect = arg_max(nnout, constant(1)) #hardened dense selected channel, 0-indexed
+    end
+    hardselect_1h = one_hot(hardselect, constant(n_muxinput))
     muxin_rank = ndims(muxin)
     if muxin_rank == 1 || muxin_rank == 2 #TODO: avoid switching if possible
-        softout = reduce_sum(mul(muxin, nnout), Tensor(1))
-        hardout = reduce_sum(mul(muxin, hardselect_1h), Tensor(1))
+        softout = reduce_sum(mul(muxin, nnout), constant(1))
+        hardout = reduce_sum(mul(muxin, hardselect_1h), constant(1))
     elseif muxin_rank == 3
-        softout = reduce_sum(mul3(muxin, nnout), Tensor(2))
-        hardout = reduce_sum(mul3(muxin, hardselect_1h), Tensor(2))
+        softout = reduce_sum(mul3(muxin, nnout), constant(2))
+        hardout = reduce_sum(mul3(muxin, hardselect_1h), constant(2))
     else
         error("Not supported! (rank=$(muxin_rank))")
     end
 
     SoftMux(n_muxinput, hidden_units, muxin, muxselect, softness, relustack, weight, 
-        bias, nnout, softout, harden, hardselect, hardout)
+        nnout, softout, harden, hardselect, hardout, override)
 end
 
 function mul3(X::Tensor, y::Tensor)
     n_time = get_shape(X)[2]
-    tmp = expand_dims(y, Tensor(1))
-    Y = tile(tmp, Tensor(Int32[1, n_time, 1]))
+    tmp = expand_dims(y, constant(1))
+    Y = tile(tmp, constant(Int32[1, n_time, 1]))
     out = mul(X, Y) #element-wise mul
     out
 end
@@ -124,4 +128,7 @@ function hardout(mux::SoftMux)
     mux.hardout
 end
 
-
+function get_variables(mux::SoftMux)
+    vars = vcat(mux.weight, get_variables(mux.nn))
+    vars
+end

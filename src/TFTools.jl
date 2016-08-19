@@ -47,16 +47,16 @@ include("TFDataset.jl")
 export TFDataset, TFDatasets, next_batch, num_examples
 
 include("ReluStack.jl")
-export ReluStack, out
+export ReluStack, out, get_variables
 
 include("SoftMux.jl")
-export SoftMux, out, softselect, softout, hardselect, hardout
+export SoftMux, out, softselect, softout, hardselect, hardout, get_variables
 
 include("OpsBlock.jl")
 export OpsBlock, out, num_ops
 
 include("SoftOpsMux.jl")
-export SoftOpsMux, num_ops, out, softselect, softout, hardselect, hardout
+export SoftOpsMux, num_ops, out, softselect, softout, hardselect, hardout, get_variables
 
 include("Circuit.jl")
 export Circuit, hardselect_tensor, softselect_tensor, simplestring, topstrings,

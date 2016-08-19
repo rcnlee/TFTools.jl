@@ -81,3 +81,7 @@ function out(relustack::ReluStack)
     relustack.out
 end
 
+function get_variables(relustack::ReluStack)
+    vars = vcat(relustack.weights, relustack.biases)
+    vars
+end
